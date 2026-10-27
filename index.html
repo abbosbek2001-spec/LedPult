@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>LED Pult</title>
+<style>
+  :root{--bg:#0f1115;--card:#191c23;--txt:#e9ecf1;--mut:#8a93a3;--acc:#4f8cff;--ok:#2ecc71;--err:#ff5d5d}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,Roboto,sans-serif;padding:16px}
+  h1{font-size:20px;margin:4px 0 14px}
+  .card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+  label{display:block;color:var(--mut);font-size:13px;margin-bottom:8px}
+  .row{display:flex;gap:8px;align-items:center}
+  input[type=text],input[type=number]{flex:1;background:#0f1115;border:1px solid #2a2f3a;color:var(--txt);border-radius:10px;padding:11px;font-size:16px;width:100%}
+  button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:11px 16px;font-size:15px;font-weight:600}
+  #status{font-size:13px;margin-top:8px;color:var(--mut)}
+  #status.ok{color:var(--ok)} #status.err{color:var(--err)}
+  input[type=range]{width:100%;accent-color:var(--acc);height:28px}
+  .val{float:right;color:var(--txt)}
+  .sw{width:62px;height:34px;border-radius:17px;background:#333;position:relative;transition:.2s}
+  .sw::after{content:"";position:absolute;top:3px;left:3px;width:28px;height:28px;border-radius:50%;background:#fff;transition:.2s}
+  .sw.on{background:var(--ok)} .sw.on::after{left:31px}
+  .sp{justify-content:space-between}
+  #color{width:100%;height:56px;border:0;border-radius:10px;padding:0;background:none}
+  .swatches{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .swatches i{width:36px;height:36px;border-radius:50%;border:2px solid #2a2f3a}
+  .modes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .modes button{padding:11px 4px;font-size:13px}
+  .modes button{background:#252a35;color:var(--txt);font-weight:500}
+  .modes button.act{background:var(--acc)}
+  .dis{opacity:.45;pointer-events:none}
+</style>
+</head>
+<body>
+<h1>💡 LED Pult</h1>
+
+<div class="card">
+  <label>ESP32 IP manzili</label>
+  <div class="row">
+    <input id="ip" type="text" inputmode="decimal" placeholder="192.168.1.50">
+    <button id="connect">Ulanish</button>
+  </div>
+  <div id="status">Ulanmagan</div>
+</div>
+
+<div id="ctrl" class="dis">
+  <div class="card row sp">
+    <b>Yoqish / O'chirish</b>
+    <div id="power" class="sw on"></div>
+  </div>
+
+  <div class="card">
+    <label>Rang</label>
+    <input id="color" type="color" value="#ff0000">
+    <div class="swatches" id="sw"></div>
+  </div>
+
+  <div class="card">
+    <label>Yorqinlik <span class="val" id="brV"></span></label>
+    <input id="br" type="range" min="1" max="255">
+  </div>
+
+  <div class="card">
+    <label>Effekt</label>
+    <div class="modes" id="modes"></div>
+    <label style="margin-top:14px">Tezlik <span class="val" id="spV"></span></label>
+    <input id="speed" type="range" min="1" max="100">
+  </div>
+
+  <div class="card">
+    <label>LED soni</label>
+    <div class="row">
+      <input id="count" type="number" min="1" max="300">
+      <button id="saveCount">Saqlash</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let ip = "", st = {}, timer = null, pending = {};
+
+function store(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+function load(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+
+function status(t, cls){ const s=$("status"); s.textContent=t; s.className=cls||""; }
+
+function hex(r,g,b){ return "#"+[r,g,b].map(x=>x.toString(16).padStart(2,"0")).join(""); }
+
+function fill(s){
+  st = s;
+  $("power").classList.toggle("on", !!s.power);
+  $("color").value = hex(s.r,s.g,s.b);
+  $("br").value = s.br; $("brV").textContent = Math.round(s.br/2.55)+"%";
+  $("speed").value = s.speed; $("spV").textContent = s.speed;
+  $("count").value = s.count; $("count").max = s.max;
+  document.querySelectorAll("#modes button").forEach(b=>b.classList.toggle("act", +b.dataset.m===s.mode));
+}
+
+async function req(path){
+  const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 4000);
+  try{
+    const r = await fetch("http://"+ip+path, {signal: ctl.signal});
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+async function connect(){
+  ip = $("ip").value.trim();
+  if(!ip){ status("IP kiriting", "err"); return; }
+  store("ip", ip);
+  status("Ulanmoqda...");
+  try{
+    fill(await req("/state"));
+    $("ctrl").classList.remove("dis");
+    status("Ulandi: "+ip, "ok");
+  }catch(e){
+    $("ctrl").classList.add("dis");
+    status("Ulanib bo'lmadi. Telefon va ESP32 bitta WiFi'dami? IP to'g'rimi?", "err");
+  }
+}
+
+function send(params, now){
+  Object.assign(pending, params);
+  clearTimeout(timer);
+  timer = setTimeout(async ()=>{
+    const q = new URLSearchParams(pending).toString(); pending = {};
+    try{ fill(await req("/set?"+q)); status("Ulandi: "+ip, "ok"); }
+    catch(e){ status("Javob yo'q — aloqa uzildi", "err"); }
+  }, now ? 0 : 120);
+}
+
+$("connect").onclick = connect;
+$("power").onclick = () => { const p = $("power").classList.toggle("on"); send({power: p?1:0}, true); };
+$("color").oninput = e => {
+  const v = e.target.value;
+  send({r: parseInt(v.substr(1,2),16), g: parseInt(v.substr(3,2),16), b: parseInt(v.substr(5,2),16)});
+};
+$("br").oninput = e => { $("brV").textContent = Math.round(e.target.value/2.55)+"%"; send({br: e.target.value}); };
+$("speed").oninput = e => { $("spV").textContent = e.target.value; send({speed: e.target.value}); };
+$("saveCount").onclick = () => send({count: $("count").value}, true);
+const MODES = ['Statik', 'Kamalak', 'Nafas', 'Yuguruvchi', 'Teatr', 'Kamalak teatr', 'Uchqun', 'Yulduzlar', 'Olov', 'Meteor', 'Skaner', "To'ldirish", 'Strobo', 'Politsiya', 'Konfetti', "To'lqin", 'Rang almashish', 'Qarama-qarshi', 'Tomchi', 'Okean', 'Gradient', 'Markazdan', 'Sakrovchi', 'Bayram'];
+MODES.forEach((m,i)=>{ const b=document.createElement("button"); b.textContent=m; b.dataset.m=i; $("modes").appendChild(b); });
+document.querySelectorAll("#modes button").forEach(b => b.onclick = () => send({mode: b.dataset.m}, true));
+
+["#ff0000","#ff7a00","#ffd400","#00ff3c","#00e5ff","#0050ff","#a100ff","#ff00b4","#ffffff"].forEach(c=>{
+  const i = document.createElement("i"); i.style.background = c;
+  i.onclick = () => { $("color").value = c; $("color").dispatchEvent(new Event("input")); };
+  $("sw").appendChild(i);
+});
+
+const saved = load("ip");
+if(saved){ $("ip").value = saved; connect(); }
+</script>
+</body>
+</html>
