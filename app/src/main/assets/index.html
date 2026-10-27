@@ -25,7 +25,8 @@
   #color{width:100%;height:56px;border:0;border-radius:10px;padding:0;background:none}
   .swatches{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
   .swatches i{width:36px;height:36px;border-radius:50%;border:2px solid #2a2f3a}
-  .modes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .modes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .modes button{padding:11px 4px;font-size:13px}
   .modes button{background:#252a35;color:var(--txt);font-weight:500}
   .modes button.act{background:var(--acc)}
   .dis{opacity:.45;pointer-events:none}
@@ -62,12 +63,7 @@
 
   <div class="card">
     <label>Effekt</label>
-    <div class="modes" id="modes">
-      <button data-m="0">Statik</button>
-      <button data-m="1">Kamalak</button>
-      <button data-m="2">Nafas</button>
-      <button data-m="3">Yuguruvchi</button>
-    </div>
+    <div class="modes" id="modes"></div>
     <label style="margin-top:14px">Tezlik <span class="val" id="spV"></span></label>
     <input id="speed" type="range" min="1" max="100">
   </div>
@@ -144,6 +140,8 @@ $("color").oninput = e => {
 $("br").oninput = e => { $("brV").textContent = Math.round(e.target.value/2.55)+"%"; send({br: e.target.value}); };
 $("speed").oninput = e => { $("spV").textContent = e.target.value; send({speed: e.target.value}); };
 $("saveCount").onclick = () => send({count: $("count").value}, true);
+const MODES = ['Statik', 'Kamalak', 'Nafas', 'Yuguruvchi', 'Teatr', 'Kamalak teatr', 'Uchqun', 'Yulduzlar', 'Olov', 'Meteor', 'Skaner', "To'ldirish", 'Strobo', 'Politsiya', 'Konfetti', "To'lqin", 'Rang almashish', 'Qarama-qarshi', 'Tomchi', 'Okean', 'Gradient', 'Markazdan', 'Sakrovchi', 'Bayram'];
+MODES.forEach((m,i)=>{ const b=document.createElement("button"); b.textContent=m; b.dataset.m=i; $("modes").appendChild(b); });
 document.querySelectorAll("#modes button").forEach(b => b.onclick = () => send({mode: b.dataset.m}, true));
 
 ["#ff0000","#ff7a00","#ffd400","#00ff3c","#00e5ff","#0050ff","#a100ff","#ff00b4","#ffffff"].forEach(c=>{
